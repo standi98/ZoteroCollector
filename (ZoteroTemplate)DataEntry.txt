@@ -1,0 +1,22 @@
+# This template is specifically for importing/sharing, using better 
+# notes 'import from clipboard': copy the content and
+# goto Zotero menu bar, click Tools->New Template from Clipboard.  
+# Do not copy-paste this to better notes template editor directly.
+name: "[item](Template)Data Entry"
+zoteroVersion: "7.0.32"
+pluginVersion: "2.5.13"
+savedAt: "2026-03-16T13:27:47.911Z"
+content: |-
+  // @use-markdown
+  # (Template) Data Entry:
+  # ${topItem.getField("title")}
+  **Authors:** ${topItem.getCreators().map(c => c.lastName + ", " + c.firstName).join("; ")}
+  **Year:** ${topItem.getField("year")}
+  
+  ---
+  
+  ## Extracted Data
+  
+  - **Age:** 
+  - **Name:** 
+  - **Hobbies:**

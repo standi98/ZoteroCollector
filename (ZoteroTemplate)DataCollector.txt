@@ -1,0 +1,70 @@
+# This template is specifically for importing/sharing, using better 
+# notes 'import from clipboard': copy the content and
+# goto Zotero menu bar, click Tools->New Template from Clipboard.  
+# Do not copy-paste this to better notes template editor directly.
+name: "[item](Template)Data Collector"
+zoteroVersion: "7.0.32"
+pluginVersion: "2.5.13"
+savedAt: "2026-03-16T13:26:03.941Z"
+content: |-
+  // @beforeloop-begin
+  ${{
+    const NOTE_NAME = "(Template) Data Entry:";
+    const FIELDS = ["Age", "Name", "Hobbies"];
+  
+    const header = "<table><tr><th>Citekey</th><th>Year</th>" + 
+      FIELDS.map(f => "<th>" + f + "</th>").join("") + "</tr>";
+    return header;
+  }}$
+  // @beforeloop-end
+  // @default-begin
+  ${{
+    const NOTE_NAME = "(Template) Data Entry:";
+    const FIELDS = ["Age", "Name", "Hobbies"];
+  
+    function extractField(html, fieldName) {
+      const regex = new RegExp(
+        fieldName + "[^:]*:(?:<\\/\\w+>)?\\s*([^<]+)",
+        "i"
+      );
+      const match = html.match(regex);
+      return match ? match[1].trim() : "";
+    }
+  
+    function getCitekey(item) {
+      const extra = item.getField("extra") || "";
+      const match = extra.match(/citation key:\s*(\S+)/i) || extra.match(/citekey:\s*(\S+)/i);
+      if (match) return match[1];
+      const creators = item.getCreators();
+      const lastName = creators.length > 0 ? creators[0].lastName : "Unknown";
+      const year = item.getField("year") || "";
+      return lastName + year;
+    }
+  
+    const notes = Zotero.Items.get(topItem.getNotes());
+    let found = false;
+    let extractedFields = [];
+  
+    for (const note of notes) {
+      const html = note.getNote();
+      if (html.includes(NOTE_NAME)) {
+        extractedFields = FIELDS.map(f => extractField(html, f));
+        found = true;
+        break;
+      }
+    }
+  
+    const citekey = getCitekey(topItem);
+    const year = topItem.getField("year");
+  
+    if (!found) {
+      return "<tr><td>" + citekey + "</td><td>" + year + "</td><td colspan='" + FIELDS.length + "'><em>No extraction note found</em></td></tr>";
+    }
+  
+    return "<tr><td>" + citekey + "</td><td>" + year + "</td>" +
+      extractedFields.map(v => "<td>" + v + "</td>").join("") + "</tr>";
+  }}$
+  // @default-end
+  // @afterloop-begin
+  </table>
+  // @afterloop-end
