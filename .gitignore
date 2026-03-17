@@ -1,21 +1,2 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-uv.lock
-
-# Environment variables
+.venv/
 .env
-
-# VS Code settings
-.vscode
-
-
-# Extracted data files
-zotero_extracted.csv

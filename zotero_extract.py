@@ -23,26 +23,24 @@ import sqlite3
 import re
 import shutil
 import argparse
-import os
+import yaml
 import pandas as pd
 from pathlib import Path
 from html.parser import HTMLParser
-from dotenv import load_dotenv
 
 # ─── CONFIG — loaded from .env ────────────────────────────────────────────────
 
-load_dotenv()
+with open("config.yaml") as f:
+    config = yaml.safe_load(f)
+# File information
+ZOTERO_DB = Path(config["paths"]["zotero_database"])
+OUTPUT_FOLDER = Path(config["paths"]["output_folder"])
+OUTPUT_CSV = Path(config["paths"]["output_csv"])
 
-_db_path = os.getenv("ZOTERO_DB_PATH", "").strip()
-ZOTERO_DB = Path(_db_path) if _db_path else Path.home() / "Zotero" / "zotero.sqlite"
+# Zotero extraction info
+COLLECTION = config["zotero_information"]["collection_name"]
+EXTRACT_FIELDS = [f.strip() for f in config["zotero_information"]["extract_fields"].split(",")]
 
-_fields = os.getenv("EXTRACT_FIELDS", "Age,Name,Hobbies").strip()
-EXTRACT_FIELDS = [f.strip() for f in _fields.split(",") if f.strip()]
-
-_collection = os.getenv("DEFAULT_COLLECTION", "").strip()
-DEFAULT_COLLECTION = _collection if _collection else None
-
-OUTPUT_CSV = Path(os.getenv("OUTPUT_CSV", "zotero_extracted.csv").strip())
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -135,10 +133,10 @@ def get_collection_item_ids(conn: sqlite3.Connection, collection_name: str) -> s
     return {r["itemID"] for r in item_rows}
 
 
-def load_zotero_data(
+def extract_zotero_data(
     db_path: Path = ZOTERO_DB,
     fields: list[str] = EXTRACT_FIELDS,
-    collection: str | None = DEFAULT_COLLECTION
+    collection: str | None = COLLECTION
 ) -> pd.DataFrame:
     """
     Main function. Connects to Zotero SQLite (via a safe read-only copy),
@@ -156,21 +154,26 @@ def load_zotero_data(
             "Edit the ZOTERO_DB path in this script."
         )
 
-    # Work on a copy — never modify the live Zotero database
+    # Copy for safety, we don't want to accidentally mess with the live Zotero database
     tmp_db = Path("/tmp/zotero_readonly_copy.sqlite")
     shutil.copy2(db_path, tmp_db)
     print(f"Working on a copy of: {db_path}")
+    del db_path  # Avoid accidental use of the original path below
 
+    # ─── SQLite connection ────────────────────────────────
+    # Establish SQLite connection with row factory for dict-like access
     conn = sqlite3.connect(tmp_db)
     conn.row_factory = sqlite3.Row
 
-    # ── Resolve collection filter ─────────────────────────────────────────────
+
+    # Filter to collection if specified
     collection_item_ids: set[int] | None = None
     if collection:
         collection_item_ids = get_collection_item_ids(conn, collection)
         print(f"Filtering to collection '{collection}' — {len(collection_item_ids)} items found")
 
-    # ── Pull all parent items with their notes ────────────────────────────────
+
+    # Pull all parent items with their notes
     query = """
         SELECT
             i.itemID,
@@ -211,7 +214,7 @@ def load_zotero_data(
 
     rows = conn.execute(query).fetchall()
 
-    # ── Pull creators separately (one-to-many) ────────────────────────────────
+    # Pull creators separately (one-to-many)
     creators_query = """
         SELECT
             ic.itemID,
@@ -225,12 +228,15 @@ def load_zotero_data(
     creator_rows = conn.execute(creators_query).fetchall()
     conn.close()
 
+    # ─── End database work, now process in Python ────────────────────────────────
+
+    
     # Build a lookup: itemID → [lastName, ...]
     creators_by_item: dict[int, list[str]] = {}
     for cr in creator_rows:
         creators_by_item.setdefault(cr["itemID"], []).append(cr["lastName"])
 
-    # ── Parse each row ────────────────────────────────────────────────────────
+    # Parse each row
     records = []
     seen_items = set()  # In case an item has multiple notes, use the first match
 
@@ -287,41 +293,53 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract Better Notes data from Zotero SQLite into a CSV."
     )
-    parser.add_argument(
-        "--collection", "-c",
+
+    parser.add_argument("--collection", "-c",
         type=str,
-        default=DEFAULT_COLLECTION,
+        default=COLLECTION,
         help=(
             "Name of the Zotero collection to filter by (case-insensitive). "
             "Omit to extract all items. "
-            f"Default: {DEFAULT_COLLECTION!r}"
+            f"Default: {COLLECTION!r}"
         )
     )
-    parser.add_argument(
-        "--list-collections",
-        action="store_true",
-        help="Print all available collection names and exit."
+
+    parser.add_argument("--db", "-d",
+        type=str,
+        default=str(ZOTERO_DB),
+        help=(
+            "Path to zotero.sqlite database. "
+            f"Default: {ZOTERO_DB}"
+        )
     )
+    
+    parser.add_argument("--fields", "-f",
+        type=str,
+        default=",".join(EXTRACT_FIELDS),
+        help=(
+            "Comma-separated list of field names to extract from notes. "
+            "Default: " + ", ".join(EXTRACT_FIELDS)
+        )
+    )
+
+    parser.add_argument("--output", "-o",
+        type=str,
+        default=OUTPUT_CSV,
+        help=(
+            "Path to save the extracted CSV file. "
+            f"Default: {OUTPUT_CSV}"
+        )
+    )
+
     args = parser.parse_args()
 
-    # ── List collections mode ─────────────────────────────────────────────────
-    if args.list_collections:
-        tmp_db = Path("/tmp/zotero_readonly_copy.sqlite")
-        shutil.copy2(ZOTERO_DB, tmp_db)
-        conn = sqlite3.connect(tmp_db)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT collectionName FROM collections ORDER BY collectionName"
-        ).fetchall()
-        conn.close()
-        print("Available collections:")
-        for r in rows:
-            print(f"  {r['collectionName']}")
-        raise SystemExit(0)
 
-    # ── Normal extraction ─────────────────────────────────────────────────────
-    df = load_zotero_data(collection=args.collection)
+    # ── Extract data ─────────────────────────────────────────────────────
+    df = extract_zotero_data(collection=args.collection, 
+                             fields=[f.strip() for f in args.fields.split(",")], 
+                             db_path=Path(args.db))
 
+    # ── Save and print ─────────────────────────────────────────────────────
     label = f"collection '{args.collection}'" if args.collection else "all collections"
     print(f"\n✓ Extracted {len(df)} papers from {label}\n")
     print(df.to_string(index=False))

@@ -1,0 +1,7 @@
+paths:
+  zotero_database: /mnt/c/users/stand/Zotero/zotero.sqlite
+  output_folder: ./
+  output_csv: extracted_data.csv
+zotero_information:
+  collection_name: Test
+  extract_fields: Age,Name,Hobbies
