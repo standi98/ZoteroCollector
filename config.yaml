@@ -1,6 +1,23 @@
 paths:
   output_folder: ./
   output_csv: extracted_data.csv
+ 
 zotero_information:
   collection_name: Test
-  extract_fields: Age,Name,Hobbies
+ 
+# ─── Extraction Schema ────────────────────────────────────────────────────────
+# Define each field you want to extract and its type:
+#
+#   flat   — single value         e.g.  Year: 2024
+#   list   — comma-separated      e.g.  Features: Speed, Depth, Wind
+#   nested — key/value sub-items  e.g.  Accuracy:
+#                                          NN: 50
+#                                          XGBoost: 78
+#
+# To skip a field for a given extraction run, comment it out.
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+extraction_schema:
+  Age:        flat
+  Name:  flat
+  Hobbies: nested

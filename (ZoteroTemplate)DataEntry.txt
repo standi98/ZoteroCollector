@@ -5,7 +5,7 @@
 name: "[item](Template)Data Entry"
 zoteroVersion: "7.0.32"
 pluginVersion: "2.5.13"
-savedAt: "2026-03-16T13:27:47.911Z"
+savedAt: "2026-03-18T13:44:20.156Z"
 content: |-
   // @use-markdown
   # (Template) Data Entry:
@@ -17,6 +17,9 @@ content: |-
   
   ## Extracted Data
   
-  - **Age:** 
-  - **Name:** 
-  - **Hobbies:**
+  - Year: 
+  - SampleSize: 
+  - Features: 
+  - Accuracy:
+    - NN: 
+    - XGBoost:
