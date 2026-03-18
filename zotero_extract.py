@@ -24,16 +24,24 @@ import re
 import shutil
 import argparse
 import yaml
+import os
 import pandas as pd
 from pathlib import Path
 from html.parser import HTMLParser
+from dotenv import load_dotenv
 
-# ─── CONFIG — loaded from .env ────────────────────────────────────────────────
+
+# ─── CONFIG — loaded from config.yaml and .env ────────────────────────────────────────────────
+
+
+load_dotenv()  # Load environment variables from .env
+ZOTERO_DB = Path(os.getenv("ZOTERO_DB_PATH", "").strip())
+assert ZOTERO_DB.exists(), "ZOTERO_DB_PATH environment variable not set. Please set it in your .env file, or ensure it points to zotero.sqlite"
+
 
 with open("config.yaml") as f:
     config = yaml.safe_load(f)
 # File information
-ZOTERO_DB = Path(config["paths"]["zotero_database"])
 OUTPUT_FOLDER = Path(config["paths"]["output_folder"])
 OUTPUT_CSV = Path(config["paths"]["output_csv"])
 
@@ -208,11 +216,32 @@ def extract_zotero_data(
         -- Child notes
         INNER JOIN itemNotes n
             ON n.parentItemID = i.itemID
-        -- Exclude deleted items
-        WHERE i.itemID NOT IN (SELECT itemID FROM deletedItems)
+        WHERE 1=1
     """
 
-    rows = conn.execute(query).fetchall()
+    if collection:
+        collection_id_row = conn.execute(
+            "SELECT collectionID FROM collections WHERE LOWER(collectionName) = LOWER(?)",
+            (collection,)
+        ).fetchone()
+
+        if not collection_id_row:
+            available = [r[0] for r in conn.execute("SELECT collectionName FROM collections").fetchall()]
+            raise ValueError(
+                f"Collection '{collection}' not found.\n"
+                f"Available collections:\n  " + "\n  ".join(sorted(available))
+            )
+
+        rows = conn.execute(query + """
+            AND i.itemID NOT IN (SELECT itemID FROM deletedItems)
+            AND i.itemID IN (
+                SELECT itemID FROM collectionItems WHERE collectionID = ?
+            )
+        """, (collection_id_row["collectionID"],)).fetchall()
+    else:
+        rows = conn.execute(query + """
+            AND i.itemID NOT IN (SELECT itemID FROM deletedItems)
+        """).fetchall()
 
     # Pull creators separately (one-to-many)
     creators_query = """
@@ -242,10 +271,6 @@ def extract_zotero_data(
 
     for row in rows:
         item_id = row["itemID"]
-
-        # Apply collection filter if specified
-        if collection_item_ids is not None and item_id not in collection_item_ids:
-            continue
 
         note_html = row["note_html"] or ""
 
