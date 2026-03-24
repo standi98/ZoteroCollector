@@ -2,24 +2,36 @@
 # notes 'import from clipboard': copy the content and
 # goto Zotero menu bar, click Tools->New Template from Clipboard.  
 # Do not copy-paste this to better notes template editor directly.
-name: "[item](Template)Data Entry"
-zoteroVersion: "7.0.32"
-pluginVersion: "2.5.13"
-savedAt: "2026-03-18T13:44:20.156Z"
+name: "[item]Data Entry"
+zoteroVersion: "8.0.4"
+pluginVersion: "3.0.3"
+savedAt: "2026-03-24T14:27:27.337Z"
 content: |-
   // @use-markdown
-  # (Template) Data Entry:
+  # Data Entry Note
   # ${topItem.getField("title")}
   **Authors:** ${topItem.getCreators().map(c => c.lastName + ", " + c.firstName).join("; ")}
   **Year:** ${topItem.getField("year")}
   
   ---
   
-  ## Extracted Data
+  ## Extracted Data 
+  **_Replace the example entries_**
   
-  - Year: 
-  - SampleSize: 
-  - Features: 
-  - Accuracy:
-    - NN: 
-    - XGBoost:
+  - Sampling rate :
+  - Sample size
+  	- train :
+  	- val :
+  	- test :
+  - Features : STW, Sea Depth, Wave height, ...
+  - Target : Shaft Power
+  - Architecture : NN
+  - Hybrid methodology : PINN
+  - Accuracy
+  	- NN
+  		- MAPE : 10
+  		- R2 : 0.3
+  	- PGNN
+  		- MAPE : 10
+  		- R2 : 0.3
+  
