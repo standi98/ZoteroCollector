@@ -3,7 +3,7 @@ paths:
   output_csv: extracted_data.csv
  
 zotero_information:
-  collection_name: Test
+  collection_name: Directly Relevant
  
 # ─── Extraction Schema ────────────────────────────────────────────────────────
 # Define each field you want to extract and its type:
@@ -18,6 +18,26 @@ zotero_information:
 # ─────────────────────────────────────────────────────────────────────────────
  
 extraction_schema:
-  Age:        flat
-  Name:  flat
-  Hobbies: nested
+  Sampling rate: flat
+  Sample size: nested
+  Features: list
+  Target: flat
+  Architecture: flat
+  Hybrid methodology: flat
+  Accuracy: nested
+  Accuracy context: flat
+  Number of vessels: flat
+  Vessel class: flat
+  Time Span: flat
+  Has fouling proxy: flat
+  Has RPM: flat
+  Has separate Swell: flat
+  Physics model: flat
+  Split Type: flat
+  Test split is dataset shift: flat
+  Shift quantified: flat
+  Cross validation test splits: flat
+  Baselines: flat
+  Reports bias: flat
+  Reports Uncertainty: flat
+  Reports Disaggregated Error: flat

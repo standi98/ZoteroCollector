@@ -2,10 +2,10 @@
 # notes 'import from clipboard': copy the content and
 # goto Zotero menu bar, click Tools->New Template from Clipboard.  
 # Do not copy-paste this to better notes template editor directly.
-name: "[item]Data Entry"
+name: "[item]Data Entry Note"
 zoteroVersion: "8.0.4"
 pluginVersion: "3.0.3"
-savedAt: "2026-03-24T14:27:27.337Z"
+savedAt: "2026-03-26T14:52:02.171Z"
 content: |-
   // @use-markdown
   # Data Entry Note
@@ -34,4 +34,19 @@ content: |-
   	- PGNN
   		- MAPE : 10
   		- R2 : 0.3
-  
+  - Accuracy context : 
+  - Number of vessels : 
+  - Vessel class : 
+  - Time Span : 
+  - Has fouling proxy : 
+  - Has RPM : 
+  - Has separate Swell : 
+  - Physics model : 
+  - Split Type : 
+  - Test split is dataset shift : 
+  - Shift quantified : 
+  - Cross validation test splits : 
+  - Baselines : 
+  - Reports bias : 
+  - Reports Uncertainty : 
+  - Reports Disaggregated Error : 

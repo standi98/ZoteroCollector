@@ -402,7 +402,8 @@ if __name__ == "__main__":
 
     label = f"collection '{args.collection}'" if args.collection else "all collections"
     print(f"\n✓ Extracted {len(df)} papers from {label}\n")
-    print(df.to_string(index=False))
+    # print(df.to_string(index=False))
 
     df.to_csv(args.output, index=False)
+    df.to_excel(args.output.replace(".csv", ".xlsx"), index=False)
     print(f"\n✓ Saved to {args.output}")
