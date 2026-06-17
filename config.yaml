@@ -19,12 +19,12 @@ zotero_information:
  
 extraction_schema:
   Sampling rate: flat
-  Sample size: nested
+  # Sample size: nested
   Features: list
   Target: flat
   Architecture: flat
   Hybrid methodology: flat
-  Accuracy: nested
+  # Accuracy: nested
   Accuracy context: flat
   Number of vessels: flat
   Vessel class: flat

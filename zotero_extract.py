@@ -34,8 +34,13 @@ SCHEMA: dict[str, str] = config["extraction_schema"]
 class HTMLTextExtractor(HTMLParser):
     """
     Converts Zotero note HTML to indented plain text.
-    Handles Zotero's habit of wrapping list item text in <p> tags
-    when the item contains children.
+
+    Zotero's Better Notes renders parent list items as:
+        <li><p>Label</p><ul>...</ul></li>
+    where the label text is inside a <p> tag and the colon is a sibling
+    text node outside it. This parser accumulates all text within a <li>
+    regardless of intermediate <p> tags, and suppresses heading text
+    (h1/h2/h3) so it doesn't bleed into the extracted fields.
     """
     def __init__(self):
         super().__init__()
@@ -43,32 +48,40 @@ class HTMLTextExtractor(HTMLParser):
         self._current = ""
         self._depth   = 0
         self._in_li   = False
+        self._skip    = False   # True inside h1/h2/h3 — text we don't want
 
     def handle_starttag(self, tag, attrs):
         if tag == "ul":
             self._depth += 1
         elif tag == "li":
-            # Flush previous item if any
             if self._current.strip():
                 self._lines.append(self._current)
             self._current = "  " * self._depth + "- "
             self._in_li   = True
-        # <p> inside <li> is just inline text — don't flush, don't indent
+        elif tag in ("h1", "h2", "h3", "hr"):
+            self._skip = True
 
     def handle_endtag(self, tag):
         if tag == "ul":
             self._depth -= 1
         elif tag == "li":
-            # Flush the completed item
             if self._current.strip():
                 self._lines.append(self._current)
             self._current = ""
             self._in_li   = False
-        # Ignore </p> — content already accumulated into _current
+        elif tag in ("h1", "h2", "h3"):
+            self._skip = False
+            # Flush any accumulated heading text as its own line so it
+            # doesn't concatenate with the next li prefix
+            if self._current.strip():
+                self._lines.append(self._current)
+                self._current = ""
 
     def handle_data(self, data):
+        if self._skip:
+            return
         text = data.strip()
-        if text:
+        if text and self._in_li:
             self._current += text
 
     def get_text(self):
@@ -104,20 +117,25 @@ def parse_list(lines: list[str], field: str) -> str:
         - **Features:** Speed, Depth, Wind
     Returns the raw comma-separated string, or "" if not found.
     """
-    # List fields are stored the same way as flat — just return as-is
     return parse_flat(lines, field)
 
 
 def parse_nested(lines: list[str], field: str) -> dict[str, str]:
     """
     Recursively extracts nested sub-key/value pairs.
-    A line with no value after the colon is treated as a parent node.
-    Returns a flat dict with keys joined by '_':
-        {"Neural_NN": "50", "Neural_CNN": "60", "Boosting_XGBoost": "78"}
-    """
-    header_pattern = re.compile(rf"\*{{0,2}}{re.escape(field)}\*{{0,2}}\s*:\s*$", re.IGNORECASE)
 
-    # Find the header line and its indentation depth
+    Handles both forms Zotero produces:
+        - "- Accuracy :"   (colon present, rendered by older Better Notes)
+        - "- Accuracy"     (no colon, rendered when <p> wraps the label)
+
+    Returns a flat dict with keys joined by '_':
+        {"NN_MAPE": "10", "NN_R2": "0.3", "PGNN_MAPE": "10", "PGNN_R2": "0.3"}
+    """
+    # Match the header line with optional colon — the line starts with "- FieldName"
+    header_pattern = re.compile(
+        rf"[-*]\s+\*{{0,2}}{re.escape(field)}\*{{0,2}}\s*:?\s*$", re.IGNORECASE
+    )
+
     header_idx   = None
     header_depth = 0
     for i, line in enumerate(lines):
@@ -143,10 +161,22 @@ def parse_nested(lines: list[str], field: str) -> dict[str, str]:
 
 
 def _parse_block(lines: list[str], prefix: str = "") -> dict[str, str]:
+    """
+    Recursively parses an indented block into a flat dict.
+
+    Three line types handled:
+        leaf    "- MAPE : 10"       — key with value
+        parent  "- train :"         — key with colon but no value; check for children
+        bare    "- NN"              — key with no colon (Zotero's <p>-wrapped parents)
+
+    For parent/bare: if children exist, recurse with prefixed key.
+    If no children (truly empty field like "train :"), store as empty string.
+    """
     result     = {}
     i          = 0
-    leaf_pat   = re.compile(r"[-*]\s+([^:]+):\s+(.+)")
-    parent_pat = re.compile(r"[-*]\s+([^:]+):\s*$")
+    leaf_pat   = re.compile(r"[-*]\s+([^:]+):\s+(.+)")   # has value after colon
+    parent_pat = re.compile(r"[-*]\s+([^:]+):\s*$")       # colon, no value
+    bare_pat   = re.compile(r"[-*]\s+(.+)")               # no colon at all
 
     while i < len(lines):
         line     = lines[i]
@@ -155,15 +185,16 @@ def _parse_block(lines: list[str], prefix: str = "") -> dict[str, str]:
 
         leaf = leaf_pat.match(stripped)
         if leaf:
-            subkey = leaf.group(1).strip()
-            key    = f"{prefix}{subkey}" if prefix else subkey
+            subkey      = leaf.group(1).strip()
+            key         = f"{prefix}{subkey}" if prefix else subkey
             result[key] = leaf.group(2).strip()
             i += 1
             continue
 
-        parent = parent_pat.match(stripped)
-        if parent:
-            subkey   = parent.group(1).strip()
+        # parent_pat takes priority over bare_pat (both would match "- train :")
+        m = parent_pat.match(stripped) or bare_pat.match(stripped)
+        if m:
+            subkey     = m.group(1).strip()
             new_prefix = f"{prefix}{subkey}_" if prefix else f"{subkey}_"
 
             children = []
@@ -175,7 +206,13 @@ def _parse_block(lines: list[str], prefix: str = "") -> dict[str, str]:
                 children.append(lines[i])
                 i += 1
 
-            result.update(_parse_block(children, prefix=new_prefix))
+            if children:
+                # Real parent node — recurse
+                result.update(_parse_block(children, prefix=new_prefix))
+            else:
+                # Empty leaf (e.g. "train :") — store empty string
+                key         = f"{prefix}{subkey}" if prefix else subkey
+                result[key] = ""
             continue
 
         i += 1
@@ -227,6 +264,24 @@ def get_citekey(extra: str, creators: list, year: str) -> str:
     return f"{last_name}{year}"
 
 
+def format_creator_string(creators: list[str]) -> str:
+    """
+    Formats a list of last names into a display string matching Zotero's UI:
+        []           → ""
+        ["Altan"]    → "Altan"
+        ["Altan",
+         "Smith"]    → "Altan and Smith"
+        3+           → "Altan et al."
+    """
+    if not creators:
+        return ""
+    if len(creators) == 1:
+        return creators[0]
+    if len(creators) == 2:
+        return f"{creators[0]} and {creators[1]}"
+    return f"{creators[0]} et al."
+
+
 # ─── Main extraction ──────────────────────────────────────────────────────────
 
 def extract_zotero_data(
@@ -275,6 +330,7 @@ def extract_zotero_data(
             AND id_year.fieldID = (
                 SELECT fieldID FROM fields
                 WHERE fieldName IN ('date', 'year')
+                ORDER BY fieldName   -- 'date' before 'year', deterministic
                 LIMIT 1
             )
         LEFT JOIN itemDataValues idv_year
@@ -337,18 +393,21 @@ def extract_zotero_data(
         item_id   = row["itemID"]
         note_html = row["note_html"] or ""
 
-        # Only process notes that look like Data Entry notes
-        if not any(f.lower() in note_html.lower() for f in field_names):
+        # Only process notes that look like Data Entry notes.
+        # Require field name followed by optional whitespace then colon to avoid
+        # false positives from e.g. "Naval Architecture" matching "Architecture".
+        if not any(re.search(rf"{re.escape(f)}\s*:", note_html, re.IGNORECASE) for f in field_names):
             continue
 
         if item_id in seen_items:
             continue
-        seen_items.add(item_id)
 
         extracted = extract_fields(note_html, schema)
 
         if not any(v for v in extracted.values()):
             continue
+
+        seen_items.add(item_id)  # mark only after confirming this note has data
 
         creators = creators_by_item.get(item_id, [])
         year     = (row["year"] or "")[:4]
@@ -358,7 +417,8 @@ def extract_zotero_data(
             "citekey":    citekey,
             "title":      row["title"] or "",
             "year":       year,
-            "authors":    "; ".join(creators),
+            "authors":    ", ".join(creators),
+            "creator":    format_creator_string(creators),
             "zotero_key": row["zotero_key"],
         }
         record.update(extracted)
@@ -367,7 +427,7 @@ def extract_zotero_data(
     df = pd.DataFrame(records)
 
     # Reorder: metadata first, then extracted columns
-    meta_cols  = ["citekey", "title", "year", "authors", "zotero_key"]
+    meta_cols  = ["citekey", "title", "year", "authors", "creator", "zotero_key"]
     extra_cols = [c for c in df.columns if c not in meta_cols]
     df = df[meta_cols + extra_cols]
 
@@ -402,8 +462,8 @@ if __name__ == "__main__":
 
     label = f"collection '{args.collection}'" if args.collection else "all collections"
     print(f"\n✓ Extracted {len(df)} papers from {label}\n")
-    # print(df.to_string(index=False))
 
-    df.to_csv(args.output, index=False)
-    df.to_excel(args.output.replace(".csv", ".xlsx"), index=False)
-    print(f"\n✓ Saved to {args.output}")
+    output_path = Path(args.output)
+    df.to_csv(output_path, sep=";", index=False)
+    df.to_excel(output_path.with_suffix(".xlsx"), index=False)
+    print(f"\n✓ Saved to {output_path}")
